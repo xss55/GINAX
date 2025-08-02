@@ -1,0 +1,5 @@
+"2","r error 4 (Error: 'is_cran' is not an exported object from 'namespace:knitr'
+)"
+"0","!knitr::is_cran()"
+"2","Error: 'is_cran' is not an exported object from 'namespace:knitr'
+"

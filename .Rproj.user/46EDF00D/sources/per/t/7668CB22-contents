@@ -1,0 +1,402 @@
+#Aim1
+#Linear mixed-effects model with a random effect for repeated measures to
+#investigate the effects of trial (price), tax tier, and policy condition on the
+#quantity of products purchased
+
+
+# Individual differences will be included in the models as covariates. 
+# These individual differences include demographics, 
+# carbon monoxide levels, prior tobacco usage, 
+# Fagerström Test for Cigarette Dependence, 
+# product evaluation scale, perceived health risks scale,
+# and their 7-day ETM account balance for purchasing during the ETM sessions; 
+# see Table 2 for a complete list. 
+# Model selection methods will be employed and Bayesian Information Criterion (BIC) 
+# will be used to identify the optimal model.
+
+
+
+library(shinydashboard)
+library(shiny)
+library(ggplot2)
+library(readxl)
+library(DT)
+library(stringr)
+library(qualtRics)
+library(DBI)
+library(tableone)
+library(DT)
+library(RPostgres)
+library(RColorBrewer)
+library(dplyr)
+library(emmeans)
+rm(list = ls())
+
+###############################
+###############################
+###############################
+###############################
+
+#For Shuangshuang
+con <- dbConnect(RPostgres::Postgres(),dbname = 'emp',
+                 host = 'arrc-prd-db01.vtcri.local',
+                 port = 5432,
+                 user = 'xshuangshuang',
+                 password = 'Heizi230315@')
+
+
+# #For Roberta
+# ETM_password = readr::read_file("/Users/rflemos/Desktop/Old Macbook/keys/ETM_key.txt") #key to access ETM password
+# con <- dbConnect(RPostgres::Postgres(),dbname = 'emp',
+#                  host = 'arrc-prd-db01.vtcri.local',
+#                  port = 5432,
+#                  user = 'rflemos',
+#                  password = ETM_password)
+
+
+###############################
+###############################
+###############################
+###############################
+
+Taxesquery <- dbSendQuery(con, "
+                         SELECT
+                         session.id, mgr_exp.name AS expname, mgr_expsessionplan.started, mgr_expsessionplan.finished, emp_session.allowance,
+                         session.subjname AS arrcsubj_id, session.expsessionname AS arrcsession_id, mgr_expplan.desc, visitnewest.raname AS arrcra_id,
+                         emp_sessionproduct.name, emp_sessionproduct.description, emp_sessionproduct.price, emp_sessionproduct.unit, category,
+                         CASE WHEN emp_sessioncart.qty IS NULL THEN 0 ELSE emp_sessioncart.qty END AS qty
+                         FROM emp_session
+                         INNER JOIN emp_sessionproduct ON emp_sessionproduct.session_id = emp_session.id
+                         LEFT OUTER JOIN emp_sessioncart ON emp_sessioncart.session_id = emp_session.id AND emp_sessioncart.sessionproduct_id = emp_sessionproduct.id
+                         INNER JOIN mgr_expsessionplan ON mgr_expsessionplan.id = emp_session.mgrexpsessionplan_id
+                         INNER JOIN mgr_expsession ON mgr_expsession.id = mgr_expsessionplan.mgrexpsession_id
+                         INNER JOIN mgr_expplan ON mgr_expplan.id = mgr_expsessionplan.mgrexpplan_id
+                         INNER JOIN session ON session.id = mgr_expsession.session_id
+                         INNER JOIN (
+                         SELECT DISTINCT ON (session_id) raname, session_id
+                         FROM visit
+                         ORDER BY session_id, created DESC
+                         ) AS visitnewest ON visitnewest.session_id = session.id
+                         INNER JOIN mgr_exp ON mgr_exp.id = session.mgrexp_id
+                         WHERE emp_session.deleted IS NULL
+                         AND session.voided IS NULL
+                         AND emp_session.completed IS NOT NULL
+                         AND emp_sessionproduct.visible = TRUE
+                         AND mgr_exp.name = 'ETM Taxes Study 2'
+                         ORDER BY id DESC
+                         ;")
+Taxes <- dbFetch(Taxesquery)
+
+#id BS20301 VOID
+Taxesquery2 <- dbSendQuery(con, "
+                         SELECT
+                         session.id, mgr_exp.name AS expname, mgr_expsessionplan.started, mgr_expsessionplan.finished, emp_session.allowance,
+                         session.subjname AS arrcsubj_id, session.expsessionname AS arrcsession_id, mgr_expplan.desc, visitnewest.raname AS arrcra_id,
+                         emp_sessionproduct.name, emp_sessionproduct.description, emp_sessionproduct.price, emp_sessionproduct.unit, category,
+                         CASE WHEN emp_sessioncart.qty IS NULL THEN 0 ELSE emp_sessioncart.qty END AS qty
+                         FROM emp_session
+                         INNER JOIN emp_sessionproduct ON emp_sessionproduct.session_id = emp_session.id
+                         LEFT OUTER JOIN emp_sessioncart ON emp_sessioncart.session_id = emp_session.id AND emp_sessioncart.sessionproduct_id = emp_sessionproduct.id
+                         INNER JOIN mgr_expsessionplan ON mgr_expsessionplan.id = emp_session.mgrexpsessionplan_id
+                         INNER JOIN mgr_expsession ON mgr_expsession.id = mgr_expsessionplan.mgrexpsession_id
+                         INNER JOIN mgr_expplan ON mgr_expplan.id = mgr_expsessionplan.mgrexpplan_id
+                         INNER JOIN session ON session.id = mgr_expsession.session_id
+                         INNER JOIN (
+                         SELECT DISTINCT ON (session_id) raname, session_id
+                         FROM visit
+                         ORDER BY session_id, created DESC
+                         ) AS visitnewest ON visitnewest.session_id = session.id
+                         INNER JOIN mgr_exp ON mgr_exp.id = session.mgrexp_id
+                         WHERE emp_session.deleted IS NULL
+                         AND emp_session.completed IS NOT NULL
+                         AND emp_sessionproduct.visible = TRUE
+                         AND mgr_exp.name = 'ETM Taxes Study 2'
+                         ORDER BY id DESC
+                         ;")
+Taxes2 <- dbFetch(Taxesquery2)
+Taxes2 <- Taxes2[Taxes2$arrcsubj_id == "BS20301",]
+
+Taxes <- rbind(Taxes, Taxes2)
+Taxes <- Taxes[Taxes$id != 14485,]
+Taxes <- Taxes[Taxes$started > "2024-07-15 00:00:00",]
+Taxes$Methol <- "Yes"
+Taxes$Methol[Taxes$category == "Tobacco/Unflavored"] <- "No"
+
+Taxes$Condition <- unlist(strsplit(Taxes$desc," Trial "))[(1:length(unlist(strsplit(Taxes$desc," Trial "))) %% 2) == 1]
+
+Taxes$Trial <- as.numeric(unlist(strsplit(Taxes$desc," Trial "))[(1:length(unlist(strsplit(Taxes$desc," Trial "))) %% 2) == 0])
+
+Taxes$category <- unlist(lapply(strsplit(unlist(lapply(strsplit(Taxes$description, "<b> "), function(x){x[2]})), " </b>"), function(x){x[1]}))
+
+Taxes$category[grepl("Marlboro Menthol Gold Short cigarette", Taxes$description)] <- "Cigarette"
+Taxes$category[grepl("Newport Menthol 100 cigarette", Taxes$description)] <- "Cigarette"
+Taxes$category[grepl("Camel Crush Menthol Silver Shorts cigarette", Taxes$description)] <- "Cigarette"
+
+Taxes$category[Taxes$category == "Reduced-Nicotine Cigarette"] <- "VLN"
+Taxes$category[Taxes$category == "Nicotine Vaping Product"] <- "END"
+Taxes$category[Taxes$category == "Free Nicotine Vaping Product"] <- "Free-END"
+Taxes$category[Taxes$category == "Little Cigar"] <- "Cigar"
+Taxes$category[Taxes$category == "Naked 100 Nicotine Free Tobacco Vape Juice"] <- "Free-END"
+Taxes$category[Taxes$category == "Generic King/Short Cigarette"] <- "Cigarette"
+
+Taxes$category[Taxes$name %in% c("Naked 100 Nicotine Free Tobacco Vape Juice", "Naked 100 Nicotine Free Menthol Vape Juice")] <- "0% ENDS"
+Taxes$category[Taxes$name %in% c("Naked 100 5% Nicotine Menthol Vape Juice", "Naked 100 5% Nicotine Tobacco Vape Juice")] <- "5% ENDS"
+
+
+Taxes$TaxTier <- "No"
+
+Taxes$TaxTier[Taxes$category == "Cigarette"] <- "High"
+
+Taxes$TaxTier[Taxes$category == "VLN" & Taxes$Condition == "TP"] <- "High"
+Taxes$TaxTier[Taxes$category == "VLN" & Taxes$Condition %in% c("HR","MR")] <- "Medium"
+
+Taxes$TaxTier[Taxes$category == "Herbal Cigarette" & Taxes$Condition == "TP"] <- "Medium"
+Taxes$TaxTier[Taxes$category == "Herbal Cigarette" & Taxes$Condition %in% c("MR", "HR")] <- "High"
+
+#Taxes$TaxTier[Taxes$category == "Herbal Cigarette" & Taxes$Condition %in% c("TP", "HR")] <- "Medium"
+#Taxes$TaxTier[Taxes$category == "Herbal Cigarette" & Taxes$Condition =="MR"] <- "High"
+
+Taxes$TaxTier[Taxes$category == "5% ENDS" & Taxes$Condition %in% c("TP", "MR")] <- "High"
+Taxes$TaxTier[Taxes$category == "5% ENDS" & Taxes$Condition %in% c("NC", "HR")] <- "Medium"
+
+Taxes$TaxTier[Taxes$category == "0% ENDS" & Taxes$Condition %in% c("MR")] <- "High"
+Taxes$TaxTier[Taxes$category == "0% ENDS" & Taxes$Condition %in% c("TP", "HR")] <- "Medium"
+
+Taxes$TaxTier[Taxes$category == "Chewing Tobacco"] <- "High"
+Taxes$TaxTier[Taxes$category == "Chewing Tobacco" & Taxes$Condition == "HR"] <- "Medium"
+
+Taxes$TaxTier[Taxes$category == "Snuff"] <- "High"
+Taxes$TaxTier[Taxes$category == "Snuff" & Taxes$Condition == "HR"] <- "Medium"
+
+Taxes$TaxTier[Taxes$category == "Snus" & Taxes$Condition %in% c("TP","NC")] <- "High"
+Taxes$TaxTier[Taxes$category == "Snus" & Taxes$Condition %in% c("HR","MR")] <- "Medium"
+
+Taxes$TaxTier[Taxes$category == "Nicotine pouch" & Taxes$Condition %in% c("TP","MR")] <- "High"
+Taxes$TaxTier[Taxes$category == "Nicotine pouch" & Taxes$Condition %in% c("HR","NC")] <- "Medium"
+
+Taxes_TP_temp <- Taxes[Taxes$Condition == "TP",]
+Taxes_MR_temp <- Taxes[Taxes$Condition == "MR",]
+Taxes_HR_temp <- Taxes[Taxes$Condition == "HR",]
+Taxes_NC_temp <- Taxes[Taxes$Condition == "NC",]
+
+Taxes_TP <- Taxes[Taxes$Condition == "Control" & Taxes$Trial == 1,]
+Taxes_MR <- Taxes[Taxes$Condition == "Control" & Taxes$Trial == 1,]
+Taxes_HR <- Taxes[Taxes$Condition == "Control" & Taxes$Trial == 1,]
+Taxes_NC <- Taxes[Taxes$Condition == "Control" & Taxes$Trial == 1,]
+
+Taxes_control_category <- unique(Taxes_TP$category)
+for(i in 1:length(Taxes_control_category)){
+  Taxes_TP$TaxTier[Taxes_TP$category == Taxes_control_category[i]] <- unique(Taxes_TP_temp$TaxTier[Taxes_TP_temp$category == Taxes_control_category[i]])
+  Taxes_MR$TaxTier[Taxes_MR$category == Taxes_control_category[i]] <- unique(Taxes_MR_temp$TaxTier[Taxes_MR_temp$category == Taxes_control_category[i]])
+  Taxes_HR$TaxTier[Taxes_HR$category == Taxes_control_category[i]] <- unique(Taxes_HR_temp$TaxTier[Taxes_HR_temp$category == Taxes_control_category[i]])
+  Taxes_NC$TaxTier[Taxes_NC$category == Taxes_control_category[i]] <- unique(Taxes_NC_temp$TaxTier[Taxes_NC_temp$category == Taxes_control_category[i]])
+  
+}
+
+Taxes_TP$Condition <- "TP"
+Taxes_MR$Condition <- "MR"
+Taxes_HR$Condition <- "HR"
+Taxes_NC$Condition <- "NC"
+
+
+Taxes <- rbind(Taxes_TP_temp, Taxes_MR_temp, Taxes_HR_temp, Taxes_NC_temp, Taxes_TP, Taxes_HR, Taxes_MR, Taxes_NC)
+
+Taxes$mgnicotine <- 0
+Taxes$mgnicotine[Taxes$category == "Cigarette"] <- 15.43
+Taxes$mgnicotine[Taxes$category == "5% ENDS"] <- 50
+Taxes$mgnicotine[Taxes$category == "Nicotine Gum"] <- 4
+Taxes$mgnicotine[Taxes$category == "Nicotine pouch"] <- 6
+Taxes$mgnicotine[Taxes$name == "General Snus Wintergreen"] <- 8.60 #Snus
+Taxes$mgnicotine[Taxes$name == "General Snus White"] <- 8.08 #Snus
+Taxes$mgnicotine[Taxes$category == "Nicotine patch"] <- 21
+Taxes$mgnicotine[Taxes$category == "VLN"] <- 0.27
+
+
+Taxes$mgnicotine_purchased <- Taxes$mgnicotine*Taxes$qty
+Taxes$spent_budget <- Taxes$qty * Taxes$price
+Taxes$percent_spent_budget <- Taxes$spent_budget/Taxes$allowance*100
+
+Taxes$arrcsubj_id[Taxes$arrcsubj_id == "BR19156.2"] <- "BR19156"
+Taxes$arrcsubj_id[Taxes$arrcsubj_id == "LS18828.2"] <- "LS18828"
+
+Taxes$Condition <- factor(Taxes$Condition, levels = c("TP", "NC", "HR", "MR"))
+####model selection####
+#nesting participant under random effects for site
+
+
+# source("C:/Users/xushu/OneDrive - Virginia Tech/lmm/modelselection.R")
+# observed <- "mgnicotine_purchased"
+# total_form <- as.formula(paste0(observed,"~ Trial + Condition + TaxTier + arrcsubj_id"))
+# total_dat <- aggregate(total_form,Taxes,sum)
+# #dat <- total_dat[total_dat$TaxTier == Taxtier,]
+# bestmodel1 <- modelselect.lmm(formula = as.formula(paste0(observed,"~Trial*Condition*TaxTier+(1|arrcsubj_id)")),
+#                              data = total_dat)
+# # The Best Model:
+# #   Trial Condition TaxTier Trial:TaxTier Condition:TaxTier 
+# # BIC:
+# #   166580.5 
+# # MPP:
+# #   1  
+# fit1 <- lmm.best(bestmodel1)
+# 
+# 
+# 
+# observed <- "percent_spent_budget"
+# total_form <- as.formula(paste0(observed,"~ Trial + Condition + TaxTier + arrcsubj_id"))
+# total_dat <- aggregate(total_form,Taxes,sum)
+# #dat <- total_dat[total_dat$TaxTier == Taxtier,]
+# bestmodel2 <- modelselect.lmm(formula = as.formula(paste0(observed,"~Trial*Condition*TaxTier+(1|arrcsubj_id)")),
+#                              data = total_dat)
+# # The Best Model:
+# #   Trial Condition TaxTier Trial:TaxTier Trial:Condition:TaxTier 
+# # BIC:
+# #   108252.6 
+# # MPP:
+# #   0.25 
+# 
+# fit2 <- lmm.best(bestmodel2)
+# car::Anova(fit2)
+# 
+# 
+# emtrend_fit <- emtrends(fit2, pairwise ~ Condition, var = "Trial", adjust = "NONE", infer = TRUE)
+# emmeans_fit <- emmeans(fit2, pairwise~Trial + Condition, at=list("Trial"=1), adjust="NONE")
+# 
+# df <- as.data.frame(emtrend_fit$emtrends)
+# ggplot(df, aes(x = Condition, y = Trial.trend)) +
+#   geom_bar(stat = "identity") +
+#   labs(x = "Condition", y = "slope", title = "percent_budget") +
+#   theme_minimal()
+
+
+
+#full model
+
+
+
+observed <- "percent_spent_budget"
+total_form <- as.formula(paste0(observed,"~ Trial + Condition + TaxTier + arrcsubj_id"))
+total_dat <- aggregate(total_form,Taxes,sum)
+fullmodel <- lmer(formula = as.formula(paste0(observed,"~Trial*Condition*TaxTier+(1|arrcsubj_id)")), data = total_dat)
+
+car::Anova(fullmodel)
+
+total_dat %>% group_by(TaxTier, Condition, Trial) %>% summarise(mn = mean(percent_spent_budget), se = sd(percent_spent_budget)/sqrt(length(percent_spent_budget)))%>%
+  ggplot(aes(x = Trial, y = mn, color = Condition)) + 
+  geom_point()+
+  geom_line()+
+  geom_errorbar(aes(x=Trial,ymin = mn - se, ymax = mn + se, color = Condition), size = 1, width = .1) + 
+  facet_grid(TaxTier~., scales = "free_y")
+
+#plot
+
+#MB21380, AP21325
+mn_se_fun_total_budget <- function(data,form = ""){
+  total_form <- as.formula(paste0(form," + arrcsubj_id + allowance"))
+  total_dat <- aggregate(total_form,data,sum)
+  total_dat$percentage_budget_spent <- total_dat$spent_budget/total_dat$allowance
+  form <- as.formula("percentage_budget_spent~Trial + Condition + TaxTier")
+  mn <- aggregate(form,total_dat,mean)
+  se <- aggregate(form,total_dat, function(x){sd(x)/sqrt(length(x))})
+  total_dat <- mn[,-ncol(mn),drop = FALSE]
+  mn <- mn[,ncol(mn)]
+  se <- se[,ncol(se)]
+  total_dat$mn <- mn
+  total_dat$se <- se
+  return(total_dat)
+}
+aggregated_budget_by_trial_Tiers <- mn_se_fun_total_budget(Taxes,form = "spent_budget~Trial + Condition + TaxTier")
+aggregated_budget_by_trial_Tiers$TaxTier <- factor(aggregated_budget_by_trial_Tiers$TaxTier,levels = c("No","Medium","High"))
+
+
+plot_dat_1 <- aggregated_budget_by_trial_Tiers[aggregated_budget_by_trial_Tiers$TaxTier == "No",]
+plot1_1 <- ggplot(plot_dat_1) +
+  geom_line(aes(x = Trial, y = mn, group = Condition, color = Condition)) +
+  geom_point(aes(x = Trial, y = mn, group = Condition, color = Condition))  +
+  geom_errorbar(aes(x=Trial,ymin = mn - se, ymax = mn + se, group = Condition,color=Condition, width = .2)) +
+  scale_x_continuous(breaks = c(1:6), labels = as.character(1:6)) +
+  labs(x = "Trial", y = "Percentage of budget spent\nNo-tax tier") + 
+  scale_color_brewer(palette = "Dark2") + 
+  ylim(0,1)+
+  #geom_hline(yintercept = c(0,0.25,0.5,0.75,1), linetype = "dashed", color = "black") +
+  theme_minimal()+
+  theme(
+    legend.position = c(0.3, 0.8), 
+    legend.background = element_rect(fill = "transparent", color = NA),
+    legend.title = element_blank(),
+    #axis.line = element_line(color = "black")
+  )
+
+
+
+plot_dat_2 <- aggregated_budget_by_trial_Tiers[aggregated_budget_by_trial_Tiers$TaxTier == "Medium",]
+plot1_2 <- ggplot(plot_dat_2) +
+  geom_line(aes(x = Trial, y = mn, group = Condition, color = Condition)) +
+  geom_point(aes(x = Trial, y = mn, group = Condition, color = Condition))  +
+  geom_errorbar(aes(x=Trial,ymin = mn - se, ymax = mn + se, group = Condition,color=Condition, width = .2)) +
+  scale_x_continuous(breaks = c(1:6), labels = as.character(1:6)) +
+  labs(x = "Trial", y = "Percentage of budget spent\nMedium-tax tier") + 
+  scale_color_brewer(palette = "Dark2") + 
+  ylim(0,1)+theme_minimal()
+
+plot_dat_3 <- aggregated_budget_by_trial_Tiers[aggregated_budget_by_trial_Tiers$TaxTier == "High",]
+plot1_3 <- ggplot(plot_dat_3) +
+  geom_line(aes(x = Trial, y = mn, group = Condition, color = Condition)) +
+  geom_point(aes(x = Trial, y = mn, group = Condition, color = Condition))  +
+  geom_errorbar(aes(x=Trial,ymin = mn - se, ymax = mn + se, group = Condition,color=Condition, width = .2)) +
+  scale_x_continuous(breaks = c(1:6), labels = as.character(1:6)) +
+  labs(x = "Trial", y = "Percentage of budget spent\nHigh-tax tier") + 
+  scale_color_brewer(palette = "Dark2") + 
+  ylim(0,1)+theme_minimal()
+
+
+part1_taxtier <- function(data = Taxes, Taxtier = "High", observed = "mgnicotine_purchased", form = "Trial + Condition"){
+  total_form <- as.formula(paste0(observed,"~",form,"+ TaxTier + arrcsubj_id"))
+  total_dat <- aggregate(total_form,data,sum)
+  dat <- total_dat[total_dat$TaxTier == Taxtier,]
+  fit <- lmer(formula = as.formula(paste0(observed,"~Trial*Condition+(1|arrcsubj_id)")),
+              data = dat, REML = FALSE)
+  l <- list()
+  l[[1]] <- fit
+  l[[2]] <- emtrends(fit, pairwise ~ Condition, var = "Trial", adjust = "NONE", infer = TRUE)
+  l[[3]] <- emmeans(fit, pairwise~Trial + Condition, at=list("Trial"=1), adjust="NONE")
+
+  return(l)
+}
+budget_high_full <- part1_taxtier(data = Taxes, Taxtier = "High", observed = "percent_spent_budget", form = "Trial + Condition")
+budget_med_full <- part1_taxtier(data = Taxes, Taxtier = "Medium", observed = "percent_spent_budget", form = "Trial + Condition")
+budget_low_full <- part1_taxtier(data = Taxes, Taxtier = "No", observed = "percent_spent_budget", form = "Trial + Condition")
+plot_func <- function(project = budget_high_best, xlab = "High Taxtier", ylab = "Slope", title = "percentage budget spent"){
+  
+  df <- as.data.frame(project[[2]]$emtrends)
+  p <- ggplot(df, aes(x = Condition, y = Trial.trend)) +
+    geom_bar(stat = "identity") +
+    geom_errorbar(aes(ymin = Trial.trend - SE, ymax = Trial.trend + SE),
+                  width = 0.6,
+                  position = position_dodge(width = 0.9))+
+    labs(x = xlab, y = ylab, title = title) +
+    theme_minimal()
+  
+  return(p)
+}
+
+
+p3 <- plot_func(project = budget_high_full, xlab = NULL, ylab = "Estimated Slope\nHigh-tax tier", title = NULL)
+p2 <- plot_func(project = budget_med_full, xlab = NULL, ylab = "Estimated Slope\nMedium-tax tier", title = NULL)
+p1 <- plot_func(project = budget_low_full, xlab = NULL, ylab = "Estimated Slope\nNo-tax tier", title = NULL)
+
+
+setwd("C:/Users/xushu/OneDrive - Virginia Tech/ETMtax/Aim1/")
+pdf(file = "figure1.pdf", width = 10, height = 5)
+
+p <- cowplot::plot_grid( plot1_1 ,
+                         plot1_2 + theme(legend.position="none"),
+                         plot1_3 + theme(legend.position="none"),
+                         p1,p2,p3,
+                         label_size = 20, nrow=2
+)
+print(p)
+dev.off()
+
+
+
+

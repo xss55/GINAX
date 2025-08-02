@@ -1,0 +1,135 @@
+---
+title: "GINAX package"
+author: "Shuangshuang Xu, Jacob Williams, Allison N. Tegge, and Marco A. R. Ferreira"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{GINAX package}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library(GINAX)
+```
+
+
+# Introduction
+
+The `GINAX` package provides a genome-wide iterative fine-mapping method for Poisson and Binary GWAS data. Currently, `GINAX` contains functions to perform GINA-X analysis which is a novel iterative two-step Bayesian variable selection procedure that, when compared to fine-mapping method SuSiE-RSS, drastically reduces the rate of false discoveries while maintaining the same level of recall of true causal SNPs. While the GWAS.Bayes package in Bioconductor provides method for analysis of Gaussian data, GINAX provides methods for the analysis of non-Gaussian data.
+
+This vignette explores two toy examples (binary data and count data) to illustrate how the functions provided in `GINAX` perform the GINA-X procedure. Data has been simulated under a generalized linear mixed model from 9,000 SNPs of 328 _A. Thaliana_ ecotypes. The `GINAX` package includes as `R` objects the simulated data; 9,000 SNPs, the simulated phenotypes (both binary and Poisson), and the kinship matrix used to simulate the data. Further, the Github repo that contains the `GINAX` package also contains the data for the _A. Thaliana_ case study.
+
+# Functions
+
+The function implemented in `GINAX` is described below:
+
+* `GINAX` Performs GINA-X, using generalized linear mixed models for a given numeric phenotype vector, either binary or Poisson distributed `Y`, a SNP matrix encoded numerically `SNPs`, fixed covariates `Fixed`, and random effects and their projection matrices (`covariance` and `Z` respectively). The `GINAX` function returns the indices of the SNP matrix that were identified in the best model found by the GINA-X procedure.
+
+# Model/Model Assumptions
+
+The model used in the `GINAX` package is
+
+\begin{equation*}
+\textbf{y} \sim F(\cdot|\theta) //
+g(\theta) = X \boldsymbol{\beta} + X_f \boldsymbol{\beta}_f + Z_1 \boldsymbol{\alpha}_1 + \ldots + Z_l \boldsymbol{\alpha}_l
+\end{equation*}
+
+where
+
+* $g()$ is the link function.
+* $\theta$ is the parameter, related to the mean of the distribution.
+* $\textbf{y}$ is the vector of phenotype responses. Either binary or Poisson.
+* $X$ is the matrix of SNPs (single nucleotide polymorphisms).
+* $\boldsymbol{\beta}$ is the vector of regression coefficients that contains the effects of the SNPs.
+* $X_f$ is a matrix of fixed covariates.
+* $\boldsymbol{\beta}_f$ is the vector of regression coefficients that contains the effects of the fixed covariates.
+* $Z_i$ is an incidence matrix relating the random effects $\boldsymbol{\alpha}_i$ to the phenotype response.
+* $\boldsymbol{\alpha}_i$ is a vector of random effects with covariance matrix $\Sigma_i$. Common covariance structures include the identity matrix and kinship matrix.
+
+Currently, `GINAX` can analyze binary responses (`family = "bernoulli"`) and Poisson responses (`family = "poisson"`).
+
+# Examples
+
+## Simulated Data
+
+The `GINAX` function requires a vector of observed phenotypes (either binary or assumed Poisson distributed), a matrix of SNPs, and the specification of the random effects. First, the vector of observed phenotypes must be a numeric vector or a numeric $n \times 1$ matrix. In the `GINAX` package, there are two simulated phenotype vectors. The first simulated phenotype vector comes from a Poisson generalized linear mixed model with both a kinship random effect and an overdispersion random effect. The data is assumed to have 15 replicates for each _A. Thaliana_ ecotype. The first five elements of the Poisson simulated vector of phenotypes are  
+
+```{r}
+data("Y_poisson")
+Y_poisson[1:5]
+```
+
+The second simulated phenotype vector comes from a binary generalized linear mixed model with only a kinship random effect. The first five elements of the binary simulated vector of phenotypes are  
+```{r}
+data("Y_binary")
+Y_binary[1:5]
+```
+
+Second, the SNP matrix has to contain numeric values where each column corresponds to a SNP of interest and the $i$th row corresponds to the $i$th observation. In this example, the SNPs are a subset of the _A. Thaliana_ TAIR9 genotype dataset and all SNPs have minor allele frequency greater than 0.01. Each simulated phenotype vector is simulated using this SNP matrix. Here are the first five rows and five columns of the SNP matrix:
+
+```{r}
+data("SNPs")
+SNPs[1:5,1:5]
+```
+
+Third, the kinship matrix is an $n \times n$ positive semi-definite matrix containing only numeric values. The $i$th row or $i$th column quantifies how observation $i$ is related to other observations. Since both simulated phenotype vectors are simulated from the same SNP matrix, they have the same kinship structure. The first five rows and five columns of the kinship matrix are
+
+```{r}
+data("kinship")
+kinship[1:5,1:5]
+```
+
+
+
+The function `GINAX` implements the GINA-X method for generalized linear mixed models with either Poisson or Bernoulli distributed responses. This function takes as inputs the observed phenotypes, the SNPs coded numerically, the distributional family of the phenotype, a matrix of fixed covariates, the covariance matrices of the random effects, the design matrices of the random effects, and an offset. Further, the other inputs of `GINAX` are the FDR nominal level, the maximum number of iterations of the genetic algorithm in the model selection step, and the number of consecutive iterations of the genetic algorithm with the same best model for convergence. 
+
+### GINAX Poisson Example
+
+Here we illustrate the use of `GINAX` with a nominal FDR of 0.05 with Poisson count data. First we specify the covariance matrices for the random effects. The first random effect is assumed to be $\boldsymbol{\alpha}_1 \sim N(0,\kappa_1 K)$, where $K$ is the realized relationship matrix or kinship matrix. The second random effect is assumed to be $\boldsymbol{\alpha}_1 \sim N(0,\kappa_2 I)$, where the covariance matrix is an identity matrix times a scalar. This second random effect is to account for overdispersion in the Poisson model. The `Covariance` argument takes a list of random effect covariance matrices. For this example, the list of covariance matrices is set as:
+
+```{r}
+n <- length(Y_poisson)
+covariance <- list()
+covariance[[1]] <- kinship
+covariance[[2]] <- diag(1, nrow = n, ncol = n)
+```
+
+The design matrices $Z_i$ do not need to be specified in `Z` as the observations have no other structure such as a grouping structure. `Z` is set to be NULL implying that $Z_i = I_{n \times n}$. Further, because the number of ecotype replications is 15, in this example we set the offset to log(15). The call to the GINAX function is 
+
+```{r}
+output_poisson <- GINAX(Y=Y_poisson, Covariance=covariance, SNPs=SNPs, family="poisson", Z=NULL, offset=log(15),FDR_Nominal = 0.05, maxiterations = 1000, runs_til_stop = 200)
+output_poisson
+```
+
+`GINAX` outputs the column indices of the `SNPs` matrix that are in best model or column indices of SNPs perfectly correlated to SNPs in the best model. The data was generated with causal SNPs at positions 450, 1350, 2250, 3150, 4050, 4950, 5850, 6750, 7650, and 8550. GINAX selects SNPs at positions `r print(output_poisson)`. GINAX selects `r sum(output_poisson %in% c(450, 1350, 2250, 3150, 4050, 4950, 5850, 6750, 7650, 8550))` true causal SNPs.
+
+### GINAX Example
+
+Here we illustrate the use of `GINAX` with a nominal FDR of 0.05 with binary data. First we specify the covariance matrices for the random effects. The only random effect is assumed to be $\boldsymbol{\alpha} \sim N(0,\kappa_1 K)$, where $K$ is the realized relationship matrix or kinship matrix. For this example, the list of covariance matrices is set as:
+
+```{r}
+covariance <- list()
+covariance[[1]] <- kinship
+```
+
+In this example, the design matrices $Z_i$ do not need to be specified in `Z` as the observations have no other structure such as a grouping structure. `Z` is set to be NULL implying that $Z_i = I_{n \times n}$. With binary data, setting the number of replicates provides no computation gain and is not required. 
+
+```{r}
+output_binary <- GINAX(Y=Y_binary, Covariance=covariance, SNPs = SNPs, family = "bernoulli", Z=NULL, offset=NULL, FDR_Nominal = 0.05, maxiterations = 2000, runs_til_stop = 400)
+output_binary
+```
+
+Similarly to the Poisson example, the data was generated with causal SNPs at positions 450, 1350, 2250, 3150, 4050, 4950, 5850, 6750, 7650,and 8550. GINAX identifies 1 false SNPs and 4 true causal SNPs.
+
+
+
+
+
