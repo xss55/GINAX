@@ -19,11 +19,11 @@ Authors@R: c(
            family = "Ferreira",
            role = "aut",
            comment = c(ORCID = "0000-0002-4705-5661")))
-Description: This package is built to perform Genome-wide iterative fine-mapping method for non-Gaussian data using GINA-X. 
+Description: Implements GINA-X, a genome-wide iterative fine-mapping method designed for non-Gaussian traits. It supports the identification of credible sets of genetic variants.
 License: GPL-3 + file LICENSE
 Encoding: UTF-8
 LazyData: false
-biocViews: Bayesian, SNP, GenomeWideAssociation, finemapping
+biocViews: Software, StatisticalMethod, VariantAnnotation
 Imports: 
   GA (>= 3.2),
   caret (>= 6.0-86),

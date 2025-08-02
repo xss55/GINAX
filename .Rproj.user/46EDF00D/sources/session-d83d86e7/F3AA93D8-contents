@@ -18,9 +18,6 @@ PQL(
   postprob = NULL
 )
 }
-\value{
-PQL estimate
-}
 \description{
 PQL function
 }

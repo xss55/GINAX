@@ -29,8 +29,6 @@
 GINAX <- function(Y, Covariance, SNPs, family, Z=NULL, offset=NULL,
                   FDR_Nominal = 0.05, maxiterations = 2000, runs_til_stop = 400){
 
-  #family <- match.arg(family)
-
   if(sum(family %in% c("poisson","bernoulli")) == 0){
     stop("family must be either poisson or bernoulli")
   }

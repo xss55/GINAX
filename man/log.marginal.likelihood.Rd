@@ -6,6 +6,9 @@
 \usage{
 \method{log}{marginal.likelihood}(k, x.tilde_m, y.tilde, D_inv, ydinvy, dinvy, g)
 }
+\value{
+likelihood
+}
 \description{
 likelihood function
 }

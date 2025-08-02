@@ -6,6 +6,9 @@
 \usage{
 log_marginal_likelihood_null(y.tilde, D_inv)
 }
+\value{
+likelihood
+}
 \description{
 likelihood function for null
 }

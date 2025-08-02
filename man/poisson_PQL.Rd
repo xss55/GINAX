@@ -6,6 +6,9 @@
 \usage{
 poisson_PQL(Y, X_sig1 = NULL, Beta, Z, Alpha, offset)
 }
+\value{
+PQL estimate for poisson
+}
 \description{
 PQL function for count data
 }

@@ -6,6 +6,9 @@
 \usage{
 binomial_PQL(Y, X_sig1 = NULL, Beta, Z, Alpha)
 }
+\value{
+PQL estimate for binary data
+}
 \description{
 PQL function for binary data
 }

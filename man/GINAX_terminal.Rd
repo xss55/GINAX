@@ -16,6 +16,9 @@ GINAX_terminal(
   runs_til_stop
 )
 }
+\value{
+GINAX result
+}
 \description{
 GINAX function
 }
