@@ -46,7 +46,6 @@ data("Y_binary");data("SNPs");data("kinship")
 n <- length(Y_binary)
 covariance <- list()
 covariance[[1]] <- kinship
-covariance[[2]] <- diag(1, nrow = n, ncol = n)
 
 output_binary <- GINAX(Y=Y_binary, SNPs=SNPs,
                    Covariance=covariance, Z=NULL, family="bernoulli",

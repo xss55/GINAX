@@ -18,7 +18,6 @@
 #' n <- length(Y_binary)
 #' covariance <- list()
 #' covariance[[1]] <- kinship
-#' covariance[[2]] <- diag(1, nrow = n, ncol = n)
 #'
 #' output_binary <- GINAX(Y=Y_binary, SNPs=SNPs,
 #'                    Covariance=covariance, Z=NULL, family="bernoulli",
@@ -73,7 +72,7 @@ GINAX <- function(Y, Covariance, SNPs, family, Z=NULL, offset=NULL,
   }
 
   GINAX <- GINAX_terminal(Y = Y, kinship = Covariance, Z=Z, SNPs=SNPs, family=family, offset=offset,
-                             FDR.threshold = 1-FDR_Nominal, maxiterations = maxiterations, runs_til_stop = runs_til_stop)
+                          FDR.threshold = 1-FDR_Nominal, maxiterations = maxiterations, runs_til_stop = runs_til_stop)
 
   if(is.character(GINAX$modelselection)){
     return("No significant SNP")

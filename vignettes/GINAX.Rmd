@@ -27,9 +27,10 @@ library(GINAX)
 
 # Introduction
 
-The `GINAX` package provides a genome-wide iterative fine-mapping method for Poisson and Binary GWAS data. Currently, `GINAX` contains functions to perform GINA-X analysis which is a novel iterative two-step Bayesian variable selection procedure that, when compared to fine-mapping method SuSiE-RSS, drastically reduces the rate of false discoveries while maintaining the same level of recall of true causal SNPs. While the GWAS.Bayes package in Bioconductor provides method for analysis of Gaussian data, GINAX provides methods for the analysis of non-Gaussian data.
-
 This vignette explores two toy examples (binary data and count data) to illustrate how the functions provided in `GINAX` perform the GINA-X procedure. Data has been simulated under a generalized linear mixed model from 9,000 SNPs of 328 _A. Thaliana_ ecotypes. The `GINAX` package includes as `R` objects the simulated data; 9,000 SNPs, the simulated phenotypes (both binary and Poisson), and the kinship matrix used to simulate the data. Further, the Github repo that contains the `GINAX` package also contains the data for the _A. Thaliana_ case study.
+
+The GINAX package implements the novel Genome-wide Iterative fiNe-mApping method for non-Gaussian data (GINA-X) proposed by Xu et al. (2025). As shown in that paper, traditional fine-mapping methods often fail to identify causal variants with smaller effect sizes, and do not properly correct for multiple comparisons. In contrast, GINA-X efficiently extracts information from GWAS data in a way that reduces FDR and increases recall.
+
 
 # Functions
 

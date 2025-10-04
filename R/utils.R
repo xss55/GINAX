@@ -626,4 +626,3 @@ GINAX_terminal <- function(Y, kinship, Z, SNPs, family, offset=NULL,
   return(tmp)
 
 }
-
